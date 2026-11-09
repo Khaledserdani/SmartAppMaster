@@ -41,6 +41,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
@@ -123,20 +125,27 @@ public class MainActivity extends Activity {
         root.addView(launch);
 
         addGap(root, 18);
-        addSection("إضافات تجريبية");
-        addCard(text("هذه أدوات إضافية مستقلة وليست إعدادات الهاتف. بعض التطبيقات أو إصدارات Android قد تمنع بعض أوضاع العرض.", 12, MUTED, false));
+        addSection("الذكاء الاصطناعي المحلي");
+        addCard(text("محرك ذكي يحلل نوع التطبيق ويقترح أدوات مناسبة، ويتحسن ترتيب اقتراحاته من تقييماتك. يعمل محلياً دون قراءة محادثاتك أو بيانات التطبيقات الخاصة.", 12, MUTED, false));
+        Button analyze = button("① حلّل التطبيق واقترح أفضل الإضافات");
+        analyze.setOnClickListener(v -> showAiAnalysis());
+        root.addView(analyze);
 
-        Button floating = button("① تشغيل المساعد العائم");
+        addGap(root, 12);
+        addSection("مركز VIP والاشتراكات");
+        addCard(text("نظّم الخدمات المدفوعة التي تملكها، واعرف خيارات المشاركة العائلية أو الأجهزة المتعددة عندما تسمح بها الشركة. لا نخزن كلمات المرور ولا نصنع اشتراكات غير حقيقية.", 12, MUTED, false));
+        Button vip = secondaryButton("② فتح مركز VIP");
+        vip.setOnClickListener(v -> showVipCenter());
+        root.addView(vip);
+
+        addGap(root, 12);
+        addSection("محرك الإضافات");
+        Button floating = secondaryButton("③ تشغيل المساعد العائم");
         floating.setOnClickListener(v -> showFloatingAssistant());
         root.addView(floating);
-
-        Button split = secondaryButton("② فتح التطبيق في شاشة مقسومة");
+        Button split = secondaryButton("فتح التطبيق في شاشة مقسومة");
         split.setOnClickListener(v -> openSelectedSplitScreen());
         root.addView(split);
-
-        Button analyze = secondaryButton("③ تحليل توافق التطبيق واقتراح أدوات");
-        analyze.setOnClickListener(v -> analyzeSelectedApp());
-        root.addView(analyze);
 
         addGap(root, 18);
         addSection("كل التطبيقات والألعاب");
@@ -163,7 +172,7 @@ public class MainActivity extends Activity {
         root.addView(appList);
 
         addGap(root, 18);
-        TextView footer = text("Smart App Master • Experimental", 11, MUTED, false);
+        TextView footer = text("SMART APP MASTER • AI & VIP", 11, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         root.addView(footer);
     }
@@ -456,6 +465,110 @@ public class MainActivity extends Activity {
             try { startActivity(intent); }
             catch (Exception ignored) { toast("تعذر تشغيل التطبيق المحدد."); }
         }
+    }
+
+    private void showAiAnalysis() {
+        if (!hasSelection()) return;
+        boolean overlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && Settings.canDrawOverlays(this);
+        boolean split = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N;
+        String feedbackKey = "feedback_" + selectedPackage;
+        int feedback = prefs.getInt(feedbackKey, 0);
+        SmartAiEngine.Analysis analysis = SmartAiEngine.analyze(
+                selectedLabelText, selectedPackage, overlay, split, feedback);
+        StringBuilder report = new StringBuilder();
+        report.append("التطبيق: ").append(selectedLabelText)
+                .append("\nنوعه المتوقع: ").append(analysis.category)
+                .append("\nثقة التصنيف: ").append(analysis.confidence).append("%")
+                .append("\n\n").append(analysis.summary)
+                .append("\n\nاقتراحات المحرك:");
+        for (int i = 0; i < analysis.recommendations.size(); i++) {
+            report.append("\n").append(i + 1).append(". ")
+                    .append(analysis.recommendations.get(i));
+        }
+        report.append("\n\nهذا محرك توصية محلي قابل للتطوير، وليس نموذجاً سحابياً أو قارئاً لمحتوى التطبيق.");
+        new AlertDialog.Builder(this)
+                .setTitle("تحليل Smart AI")
+                .setMessage(report.toString())
+                .setPositiveButton("الاقتراح مفيد", (dialog, which) -> {
+                    prefs.edit().putInt(feedbackKey, Math.min(10, feedback + 2)).apply();
+                    toast("سجلنا تقييمك لتحسين الاقتراحات القادمة.");
+                })
+                .setNegativeButton("الاقتراح غير مناسب", (dialog, which) -> {
+                    prefs.edit().putInt(feedbackKey, Math.max(-10, feedback - 2)).apply();
+                    toast("سجلنا ملاحظتك لتحسين الاقتراحات القادمة.");
+                })
+                .setNeutralButton("إغلاق", null)
+                .show();
+    }
+
+    private Set<String> readVipEntries() {
+        Set<String> saved = prefs.getStringSet("vip_entries", new HashSet<>());
+        return new HashSet<>(saved == null ? new HashSet<>() : saved);
+    }
+
+    private void showVipCenter() {
+        Set<String> entries = readVipEntries();
+        StringBuilder message = new StringBuilder();
+        message.append("عدد الاشتراكات المسجلة: ").append(entries.size()).append("\n\n");
+        if (entries.isEmpty()) {
+            message.append("لم تسجل أي اشتراك بعد. أضف الخدمات التي تملكها أو تشارك فيها رسمياً.");
+        } else {
+            message.append("اشتراكاتك المسجلة:");
+            for (String entry : entries) message.append("\n• ").append(entry);
+        }
+        message.append("\n\nمركز VIP ينظم حقوقك وطرق المشاركة المسموحة فقط. لا يفتح مزايا مدفوعة دون ترخيص.");
+        new AlertDialog.Builder(this)
+                .setTitle("VIP MASTER")
+                .setMessage(message.toString())
+                .setPositiveButton("إضافة اشتراك", (dialog, which) -> addVipEntry())
+                .setNeutralButton("كيف أشارك الاشتراك؟", (dialog, which) -> showVipSharingGuide())
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    private void addVipEntry() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(16), dp(8), dp(16), dp(4));
+        EditText service = new EditText(this);
+        service.setSingleLine(true);
+        service.setHint("اسم التطبيق أو الخدمة");
+        service.setTextColor(TEXT);
+        service.setHintTextColor(MUTED);
+        form.addView(service);
+        EditText access = new EditText(this);
+        access.setSingleLine(true);
+        access.setHint("مثلاً: اشتراكي / مشاركة عائلية رسمية");
+        access.setTextColor(TEXT);
+        access.setHintTextColor(MUTED);
+        form.addView(access);
+        new AlertDialog.Builder(this)
+                .setTitle("إضافة عضوية إلى VIP MASTER")
+                .setView(form)
+                .setPositiveButton("حفظ", (dialog, which) -> {
+                    String name = service.getText().toString().trim();
+                    String type = access.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        toast("اكتب اسم الخدمة أولاً.");
+                        return;
+                    }
+                    if (type.isEmpty()) type = "اشتراك مسجل";
+                    Set<String> entries = readVipEntries();
+                    entries.add(name + " — " + type);
+                    prefs.edit().putStringSet("vip_entries", entries).apply();
+                    toast("تم تسجيل العضوية في مركز VIP.");
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
+    private void showVipSharingGuide() {
+        new AlertDialog.Builder(this)
+                .setTitle("المشاركة الرسمية للاشتراك")
+                .setMessage("افتح إعدادات الحساب داخل الخدمة نفسها وابحث عن: العائلة، مشاركة الخطة، الأجهزة المسموحة أو إدارة الأعضاء. تختلف الشروط من شركة لأخرى. لا تشارك كلمة المرور أو رموز التحقق مع أي جهة، ولا تسجلها داخل Smart App Master.")
+                .setPositiveButton("فهمت", null)
+                .show();
     }
 
     private void analyzeSelectedApp() {
