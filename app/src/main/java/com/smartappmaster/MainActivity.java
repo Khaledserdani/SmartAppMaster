@@ -86,17 +86,13 @@ public class MainActivity extends Activity {
         selectedLabelText = prefs.getString("selected_label", "");
         buildScreen();
         loadApps();
-        updateDeviceSummary();
-        updatePrivacyStatus();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (prefs != null) {
-            updatePrivacyStatus();
-            updateDeviceSummary();
-        }
+        // Refresh only the selected app state when returning from Android settings.
+        if (prefs != null) updateSelectedLabel();
     }
 
     private void buildScreen() {
@@ -105,77 +101,46 @@ public class MainActivity extends Activity {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(18), dp(18), dp(18), dp(24));
-        root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         root.setBackgroundColor(BG);
+        root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         scroll.addView(root);
         setContentView(scroll);
 
         TextView title = text("SMART APP MASTER", 25, TEXT, true);
         title.setGravity(Gravity.CENTER);
         root.addView(title);
-        TextView subtitle = text("مركز ذكي لإدارة تطبيقاتك وتهيئة هاتفك", 14, MUTED, false);
+        TextView subtitle = text("مركز الإضافات الذكية للتطبيقات والألعاب", 14, MUTED, false);
         subtitle.setGravity(Gravity.CENTER);
         root.addView(subtitle);
         addGap(root, 18);
 
-        addSection("حالة الهاتف");
-        deviceSummary = text("جارٍ قراءة معلومات الجهاز...", 14, TEXT, false);
-        addCard(deviceSummary);
-        Button refresh = button("تحديث معلومات الهاتف");
-        refresh.setOnClickListener(v -> updateDeviceSummary());
-        root.addView(refresh);
-
-        addGap(root, 18);
-        addSection("وضع الخصوصية العام");
-        privacyStatus = text("", 13, MUTED, false);
-        addCard(privacyStatus);
-        Button privacyButton = button("تبديل وضع عدم الإزعاج");
-        privacyButton.setOnClickListener(v -> toggleDoNotDisturb());
-        root.addView(privacyButton);
-        TextView privacyNote = text("هذا الوضع يؤثر على إشعارات الهاتف عموماً، وليس Tango وحده. أول مرة قد يطلب Android منح صلاحية خاصة. إعداد إخفاء محتوى الإشعارات تضبطه من إعدادات النظام.", 12, MUTED, false);
-        addCard(privacyNote);
-        Button dndSettings = secondaryButton("إعدادات عدم الإزعاج في Android");
-        dndSettings.setOnClickListener(v -> openDndSettings());
-        root.addView(dndSettings);
-
-        addGap(root, 18);
-        addSection("التطبيق المحدد");
+        addSection("التطبيق المستهدف");
         selectedLabel = text("اختر تطبيقاً من القائمة بالأسفل", 15, TEXT, true);
         addCard(selectedLabel);
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.VERTICAL);
-        Button launch = button("فتح التطبيق");
+        Button launch = button("فتح التطبيق المحدد");
         launch.setOnClickListener(v -> launchSelected());
-        actions.addView(launch);
-        Button notifications = secondaryButton("إعدادات إشعارات التطبيق");
-        notifications.setOnClickListener(v -> openSelectedNotificationSettings());
-        actions.addView(notifications);
-        Button appInfo = secondaryButton("معلومات التطبيق والصلاحيات");
-        appInfo.setOnClickListener(v -> openSelectedAppInfo());
-        actions.addView(appInfo);
-        Button storage = secondaryButton("مساحة التخزين");
-        storage.setOnClickListener(v -> openSelectedStorage());
-        actions.addView(storage);
-        root.addView(actions);
+        root.addView(launch);
 
         addGap(root, 18);
-        addSection("إضافات تجريبية فوق التطبيقات");
-        TextView featureNote = text("هذه أدوات مستقلة تعمل فوق التطبيق المحدد ضمن حدود Android. لا تفتح محتوى مدفوعاً ولا تتجاوز خصوصية أو حماية أي تطبيق.", 12, MUTED, false);
-        addCard(featureNote);
-        Button floating = button("تشغيل المساعد العائم فوق التطبيقات");
+        addSection("إضافات تجريبية");
+        addCard(text("هذه أدوات إضافية مستقلة وليست إعدادات الهاتف. بعض التطبيقات أو إصدارات Android قد تمنع بعض أوضاع العرض.", 12, MUTED, false));
+
+        Button floating = button("① تشغيل المساعد العائم");
         floating.setOnClickListener(v -> showFloatingAssistant());
         root.addView(floating);
-        Button split = secondaryButton("طلب فتح التطبيق في شاشة مقسومة");
+
+        Button split = secondaryButton("② فتح التطبيق في شاشة مقسومة");
         split.setOnClickListener(v -> openSelectedSplitScreen());
         root.addView(split);
-        Button analyze = secondaryButton("تحليل إمكانيات التطبيق واقتراح أدوات");
+
+        Button analyze = secondaryButton("③ تحليل توافق التطبيق واقتراح أدوات");
         analyze.setOnClickListener(v -> analyzeSelectedApp());
         root.addView(analyze);
 
         addGap(root, 18);
-        addSection("قائمة التطبيقات");
-        TextView hint = text("اختر التطبيق لإدارة إعداداته من خلال Android أو تشغيله مباشرة.", 12, MUTED, false);
+        addSection("كل التطبيقات والألعاب");
+        TextView hint = text("اختر أي تطبيق لتجربة الإضافات عليه، وليس Tango وحده.", 12, MUTED, false);
         root.addView(hint);
         addGap(root, 8);
         searchBox = new EditText(this);
@@ -198,7 +163,7 @@ public class MainActivity extends Activity {
         root.addView(appList);
 
         addGap(root, 18);
-        TextView footer = text("Smart App Master • الإصدار 1.0.0", 11, MUTED, false);
+        TextView footer = text("Smart App Master • Experimental", 11, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         root.addView(footer);
     }
