@@ -3,13 +3,8 @@ package com.smartappmaster;
 import android.app.Activity;
 import android.app.ActivityOptions;
 import android.app.AlertDialog;
-import android.app.ActivityManager;
-import android.app.NotificationManager;
 import android.content.ActivityNotFoundException;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -19,7 +14,6 @@ import android.graphics.Typeface;
 import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
-import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -41,6 +35,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
@@ -54,8 +50,6 @@ public class MainActivity extends Activity {
     private LinearLayout root;
     private LinearLayout appList;
     private TextView selectedLabel;
-    private TextView deviceSummary;
-    private TextView privacyStatus;
     private EditText searchBox;
     private SharedPreferences prefs;
     private String selectedPackage = "";
@@ -123,20 +117,27 @@ public class MainActivity extends Activity {
         root.addView(launch);
 
         addGap(root, 18);
-        addSection("إضافات تجريبية");
-        addCard(text("هذه أدوات إضافية مستقلة وليست إعدادات الهاتف. بعض التطبيقات أو إصدارات Android قد تمنع بعض أوضاع العرض.", 12, MUTED, false));
+        addSection("الذكاء الاصطناعي المحلي");
+        addCard(text("محرك ذكي يحلل نوع التطبيق ويقترح أدوات مناسبة، ويتحسن ترتيب اقتراحاته من تقييماتك. يعمل محلياً دون قراءة محادثاتك أو بيانات التطبيقات الخاصة.", 12, MUTED, false));
+        Button analyze = button("① حلّل التطبيق واقترح أفضل الإضافات");
+        analyze.setOnClickListener(v -> showAiAnalysis());
+        root.addView(analyze);
 
-        Button floating = button("① تشغيل المساعد العائم");
+        addGap(root, 12);
+        addSection("مركز VIP والاشتراكات");
+        addCard(text("نظّم الخدمات المدفوعة التي تملكها، واعرف خيارات المشاركة العائلية أو الأجهزة المتعددة عندما تسمح بها الشركة. لا نخزن كلمات المرور ولا نصنع اشتراكات غير حقيقية.", 12, MUTED, false));
+        Button vip = secondaryButton("② فتح مركز VIP");
+        vip.setOnClickListener(v -> showVipCenter());
+        root.addView(vip);
+
+        addGap(root, 12);
+        addSection("محرك الإضافات");
+        Button floating = secondaryButton("③ تشغيل المساعد العائم");
         floating.setOnClickListener(v -> showFloatingAssistant());
         root.addView(floating);
-
-        Button split = secondaryButton("② فتح التطبيق في شاشة مقسومة");
+        Button split = secondaryButton("فتح التطبيق في شاشة مقسومة");
         split.setOnClickListener(v -> openSelectedSplitScreen());
         root.addView(split);
-
-        Button analyze = secondaryButton("③ تحليل توافق التطبيق واقتراح أدوات");
-        analyze.setOnClickListener(v -> analyzeSelectedApp());
-        root.addView(analyze);
 
         addGap(root, 18);
         addSection("كل التطبيقات والألعاب");
@@ -163,7 +164,7 @@ public class MainActivity extends Activity {
         root.addView(appList);
 
         addGap(root, 18);
-        TextView footer = text("Smart App Master • Experimental", 11, MUTED, false);
+        TextView footer = text("SMART APP MASTER • AI & VIP", 11, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         root.addView(footer);
     }
@@ -269,35 +270,11 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void openSelectedNotificationSettings() {
-        if (!hasSelection()) return;
-        try {
-            Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-            intent.putExtra(Settings.EXTRA_APP_PACKAGE, selectedPackage);
-            startActivity(intent);
-        } catch (Exception e) {
-            openSelectedAppInfo();
-        }
-    }
 
-    private void openSelectedAppInfo() {
-        if (!hasSelection()) return;
-        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:" + selectedPackage));
-        startActivity(intent);
-    }
 
-    private void openSelectedStorage() {
-        if (!hasSelection()) return;
-        try {
-            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + selectedPackage));
-            startActivity(intent);
-            toast("افتح قسم التخزين من صفحة معلومات التطبيق.");
-        } catch (Exception e) {
-            toast("إعداد التخزين غير متاح لهذا التطبيق.");
-        }
-    }
+
+
+
 
     private boolean hasSelection() {
         if (selectedPackage.isEmpty()) {
@@ -307,66 +284,13 @@ public class MainActivity extends Activity {
         return true;
     }
 
-    private void toggleDoNotDisturb() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            toast("هذه الميزة تحتاج Android 6 أو أحدث.");
-            return;
-        }
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (!nm.isNotificationPolicyAccessGranted()) {
-            toast("امنح Smart App Master صلاحية عدم الإزعاج من صفحة Android التي ستفتح.");
-            openDndSettings();
-            return;
-        }
-        int current = nm.getCurrentInterruptionFilter();
-        boolean enabled = current != NotificationManager.INTERRUPTION_FILTER_NONE;
-        nm.setInterruptionFilter(enabled ? NotificationManager.INTERRUPTION_FILTER_NONE
-                : NotificationManager.INTERRUPTION_FILTER_ALL);
-        updatePrivacyStatus();
-        toast(enabled ? "تم تشغيل عدم الإزعاج على الهاتف." : "تم إيقاف عدم الإزعاج.");
-    }
 
-    private void openDndSettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
-        } catch (Exception e) {
-            try { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
-            catch (Exception ignored) { toast("تعذر فتح إعدادات Android."); }
-        }
-    }
 
-    private void updatePrivacyStatus() {
-        if (privacyStatus == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (!nm.isNotificationPolicyAccessGranted()) {
-            privacyStatus.setText("الصلاحية غير ممنوحة. اضغط على زر الإعدادات لمنحها يدوياً.");
-        } else if (nm.getCurrentInterruptionFilter() == NotificationManager.INTERRUPTION_FILTER_NONE) {
-            privacyStatus.setText("عدم الإزعاج مفعّل حالياً على الهاتف.");
-        } else {
-            privacyStatus.setText("عدم الإزعاج متوقف حالياً. يمكنك تفعيله من الزر.");
-        }
-    }
 
-    private void updateDeviceSummary() {
-        if (deviceSummary == null) return;
-        ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
-        ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
-        am.getMemoryInfo(memory);
-        long availableMb = memory.availMem / (1024L * 1024L);
-        long totalMb = memory.totalMem / (1024L * 1024L);
-        Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        String batteryText = "غير متاح";
-        if (battery != null) {
-            int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            int temp = battery.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1);
-            if (level >= 0 && scale > 0) batteryText = (level * 100 / scale) + "%";
-            if (temp > 0) batteryText += String.format(Locale.US, " • حرارة البطارية %.1f°", temp / 10.0);
-        }
-        deviceSummary.setText("الذاكرة المتاحة: \u2066" + availableMb + " MB\u2069 من \u2066" + totalMb
-                + " MB\u2069\nالبطارية: " + batteryText
-                + "\nإصدار Android: " + Build.VERSION.RELEASE);
-    }
+
+
+
+
 
     private void showFloatingAssistant() {
         if (!hasSelection()) return;
@@ -398,7 +322,7 @@ public class MainActivity extends Activity {
         open.setOnClickListener(v -> launchSelected());
         panel.addView(open);
         Button inspect = secondaryButton("عرض تحليل التطبيق");
-        inspect.setOnClickListener(v -> analyzeSelectedApp());
+        inspect.setOnClickListener(v -> showAiAnalysis());
         panel.addView(inspect);
         Button close = secondaryButton("إغلاق النافذة العائمة");
         close.setOnClickListener(v -> removeFloatingAssistant());
@@ -458,31 +382,111 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void analyzeSelectedApp() {
+    private void showAiAnalysis() {
         if (!hasSelection()) return;
-        String version = "غير معروف";
-        try {
-            if (Build.VERSION.SDK_INT >= 33) {
-                version = getPackageManager().getPackageInfo(selectedPackage,
-                        PackageManager.PackageInfoFlags.of(0)).versionName;
-            } else {
-                version = getPackageManager().getPackageInfo(selectedPackage, 0).versionName;
-            }
-        } catch (Exception ignored) {}
-        String report = "التطبيق: " + selectedLabelText
-                + "\nالحزمة: " + selectedPackage
-                + "\nالإصدار: " + version
-                + "\n\nالإضافات التي يمكن تجربتها من Smart App Master:"
-                + "\n1. مساعد عائم واختصارات فوق التطبيق."
-                + "\n2. طلب تقسيم الشاشة إذا سمح Android والتطبيق."
-                + "\n3. تحليل توافق واقتراح إعدادات آمنة."
-                + "\n\nلا يمكن فرض جودة بث أعلى من المصدر، أو إنشاء جواهر، أو فتح فيديو مدفوع أو بث خاص دون صلاحية. كما أن هذا التحليل محلي تجريبي وليس نموذج ذكاء اصطناعي متصل بعد.";
+        boolean overlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && Settings.canDrawOverlays(this);
+        boolean split = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N;
+        String feedbackKey = "feedback_" + selectedPackage;
+        int feedback = prefs.getInt(feedbackKey, 0);
+        SmartAiEngine.Analysis analysis = SmartAiEngine.analyze(
+                selectedLabelText, selectedPackage, overlay, split, feedback);
+        StringBuilder report = new StringBuilder();
+        report.append("التطبيق: ").append(selectedLabelText)
+                .append("\nنوعه المتوقع: ").append(analysis.category)
+                .append("\nثقة التصنيف: ").append(analysis.confidence).append("%")
+                .append("\n\n").append(analysis.summary)
+                .append("\n\nاقتراحات المحرك:");
+        for (int i = 0; i < analysis.recommendations.size(); i++) {
+            report.append("\n").append(i + 1).append(". ")
+                    .append(analysis.recommendations.get(i));
+        }
+        report.append("\n\nهذا محرك توصية محلي قابل للتطوير، وليس نموذجاً سحابياً أو قارئاً لمحتوى التطبيق.");
         new AlertDialog.Builder(this)
-                .setTitle("تحليل تجريبي للتطبيق")
-                .setMessage(report)
-                .setPositiveButton("حسناً", null)
+                .setTitle("تحليل Smart AI")
+                .setMessage(report.toString())
+                .setPositiveButton("الاقتراح مفيد", (dialog, which) -> {
+                    prefs.edit().putInt(feedbackKey, Math.min(10, feedback + 2)).apply();
+                    toast("سجلنا تقييمك لتحسين الاقتراحات القادمة.");
+                })
+                .setNegativeButton("الاقتراح غير مناسب", (dialog, which) -> {
+                    prefs.edit().putInt(feedbackKey, Math.max(-10, feedback - 2)).apply();
+                    toast("سجلنا ملاحظتك لتحسين الاقتراحات القادمة.");
+                })
+                .setNeutralButton("إغلاق", null)
                 .show();
     }
+
+    private Set<String> readVipEntries() {
+        Set<String> saved = prefs.getStringSet("vip_entries", new HashSet<>());
+        return new HashSet<>(saved == null ? new HashSet<>() : saved);
+    }
+
+    private void showVipCenter() {
+        Set<String> entries = readVipEntries();
+        StringBuilder message = new StringBuilder();
+        message.append("عدد الاشتراكات المسجلة: ").append(entries.size()).append("\n\n");
+        if (entries.isEmpty()) {
+            message.append("لم تسجل أي اشتراك بعد. أضف الخدمات التي تملكها أو تشارك فيها رسمياً.");
+        } else {
+            message.append("اشتراكاتك المسجلة:");
+            for (String entry : entries) message.append("\n• ").append(entry);
+        }
+        message.append("\n\nمركز VIP ينظم حقوقك وطرق المشاركة المسموحة فقط. لا يفتح مزايا مدفوعة دون ترخيص.");
+        new AlertDialog.Builder(this)
+                .setTitle("VIP MASTER")
+                .setMessage(message.toString())
+                .setPositiveButton("إضافة اشتراك", (dialog, which) -> addVipEntry())
+                .setNeutralButton("كيف أشارك الاشتراك؟", (dialog, which) -> showVipSharingGuide())
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    private void addVipEntry() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(16), dp(8), dp(16), dp(4));
+        EditText service = new EditText(this);
+        service.setSingleLine(true);
+        service.setHint("اسم التطبيق أو الخدمة");
+        service.setTextColor(TEXT);
+        service.setHintTextColor(MUTED);
+        form.addView(service);
+        EditText access = new EditText(this);
+        access.setSingleLine(true);
+        access.setHint("مثلاً: اشتراكي / مشاركة عائلية رسمية");
+        access.setTextColor(TEXT);
+        access.setHintTextColor(MUTED);
+        form.addView(access);
+        new AlertDialog.Builder(this)
+                .setTitle("إضافة عضوية إلى VIP MASTER")
+                .setView(form)
+                .setPositiveButton("حفظ", (dialog, which) -> {
+                    String name = service.getText().toString().trim();
+                    String type = access.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        toast("اكتب اسم الخدمة أولاً.");
+                        return;
+                    }
+                    if (type.isEmpty()) type = "اشتراك مسجل";
+                    Set<String> entries = readVipEntries();
+                    entries.add(name + " — " + type);
+                    prefs.edit().putStringSet("vip_entries", entries).apply();
+                    toast("تم تسجيل العضوية في مركز VIP.");
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
+    private void showVipSharingGuide() {
+        new AlertDialog.Builder(this)
+                .setTitle("المشاركة الرسمية للاشتراك")
+                .setMessage("افتح إعدادات الحساب داخل الخدمة نفسها وابحث عن: العائلة، مشاركة الخطة، الأجهزة المسموحة أو إدارة الأعضاء. تختلف الشروط من شركة لأخرى. لا تشارك كلمة المرور أو رموز التحقق مع أي جهة، ولا تسجلها داخل Smart App Master.")
+                .setPositiveButton("فهمت", null)
+                .show();
+    }
+
+
 
     @Override
     protected void onDestroy() {
