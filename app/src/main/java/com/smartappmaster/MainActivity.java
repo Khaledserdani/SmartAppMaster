@@ -3,13 +3,8 @@ package com.smartappmaster;
 import android.app.Activity;
 import android.app.ActivityOptions;
 import android.app.AlertDialog;
-import android.app.ActivityManager;
-import android.app.NotificationManager;
 import android.content.ActivityNotFoundException;
-import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -19,7 +14,6 @@ import android.graphics.Typeface;
 import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
-import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -56,8 +50,6 @@ public class MainActivity extends Activity {
     private LinearLayout root;
     private LinearLayout appList;
     private TextView selectedLabel;
-    private TextView deviceSummary;
-    private TextView privacyStatus;
     private EditText searchBox;
     private SharedPreferences prefs;
     private String selectedPackage = "";
@@ -278,35 +270,11 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void openSelectedNotificationSettings() {
-        if (!hasSelection()) return;
-        try {
-            Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-            intent.putExtra(Settings.EXTRA_APP_PACKAGE, selectedPackage);
-            startActivity(intent);
-        } catch (Exception e) {
-            openSelectedAppInfo();
-        }
-    }
 
-    private void openSelectedAppInfo() {
-        if (!hasSelection()) return;
-        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:" + selectedPackage));
-        startActivity(intent);
-    }
 
-    private void openSelectedStorage() {
-        if (!hasSelection()) return;
-        try {
-            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + selectedPackage));
-            startActivity(intent);
-            toast("افتح قسم التخزين من صفحة معلومات التطبيق.");
-        } catch (Exception e) {
-            toast("إعداد التخزين غير متاح لهذا التطبيق.");
-        }
-    }
+
+
+
 
     private boolean hasSelection() {
         if (selectedPackage.isEmpty()) {
@@ -316,66 +284,13 @@ public class MainActivity extends Activity {
         return true;
     }
 
-    private void toggleDoNotDisturb() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            toast("هذه الميزة تحتاج Android 6 أو أحدث.");
-            return;
-        }
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (!nm.isNotificationPolicyAccessGranted()) {
-            toast("امنح Smart App Master صلاحية عدم الإزعاج من صفحة Android التي ستفتح.");
-            openDndSettings();
-            return;
-        }
-        int current = nm.getCurrentInterruptionFilter();
-        boolean enabled = current != NotificationManager.INTERRUPTION_FILTER_NONE;
-        nm.setInterruptionFilter(enabled ? NotificationManager.INTERRUPTION_FILTER_NONE
-                : NotificationManager.INTERRUPTION_FILTER_ALL);
-        updatePrivacyStatus();
-        toast(enabled ? "تم تشغيل عدم الإزعاج على الهاتف." : "تم إيقاف عدم الإزعاج.");
-    }
 
-    private void openDndSettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
-        } catch (Exception e) {
-            try { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
-            catch (Exception ignored) { toast("تعذر فتح إعدادات Android."); }
-        }
-    }
 
-    private void updatePrivacyStatus() {
-        if (privacyStatus == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (!nm.isNotificationPolicyAccessGranted()) {
-            privacyStatus.setText("الصلاحية غير ممنوحة. اضغط على زر الإعدادات لمنحها يدوياً.");
-        } else if (nm.getCurrentInterruptionFilter() == NotificationManager.INTERRUPTION_FILTER_NONE) {
-            privacyStatus.setText("عدم الإزعاج مفعّل حالياً على الهاتف.");
-        } else {
-            privacyStatus.setText("عدم الإزعاج متوقف حالياً. يمكنك تفعيله من الزر.");
-        }
-    }
 
-    private void updateDeviceSummary() {
-        if (deviceSummary == null) return;
-        ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
-        ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
-        am.getMemoryInfo(memory);
-        long availableMb = memory.availMem / (1024L * 1024L);
-        long totalMb = memory.totalMem / (1024L * 1024L);
-        Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        String batteryText = "غير متاح";
-        if (battery != null) {
-            int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            int temp = battery.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1);
-            if (level >= 0 && scale > 0) batteryText = (level * 100 / scale) + "%";
-            if (temp > 0) batteryText += String.format(Locale.US, " • حرارة البطارية %.1f°", temp / 10.0);
-        }
-        deviceSummary.setText("الذاكرة المتاحة: \u2066" + availableMb + " MB\u2069 من \u2066" + totalMb
-                + " MB\u2069\nالبطارية: " + batteryText
-                + "\nإصدار Android: " + Build.VERSION.RELEASE);
-    }
+
+
+
+
 
     private void showFloatingAssistant() {
         if (!hasSelection()) return;
@@ -407,7 +322,7 @@ public class MainActivity extends Activity {
         open.setOnClickListener(v -> launchSelected());
         panel.addView(open);
         Button inspect = secondaryButton("عرض تحليل التطبيق");
-        inspect.setOnClickListener(v -> analyzeSelectedApp());
+        inspect.setOnClickListener(v -> showAiAnalysis());
         panel.addView(inspect);
         Button close = secondaryButton("إغلاق النافذة العائمة");
         close.setOnClickListener(v -> removeFloatingAssistant());
@@ -571,31 +486,7 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    private void analyzeSelectedApp() {
-        if (!hasSelection()) return;
-        String version = "غير معروف";
-        try {
-            if (Build.VERSION.SDK_INT >= 33) {
-                version = getPackageManager().getPackageInfo(selectedPackage,
-                        PackageManager.PackageInfoFlags.of(0)).versionName;
-            } else {
-                version = getPackageManager().getPackageInfo(selectedPackage, 0).versionName;
-            }
-        } catch (Exception ignored) {}
-        String report = "التطبيق: " + selectedLabelText
-                + "\nالحزمة: " + selectedPackage
-                + "\nالإصدار: " + version
-                + "\n\nالإضافات التي يمكن تجربتها من Smart App Master:"
-                + "\n1. مساعد عائم واختصارات فوق التطبيق."
-                + "\n2. طلب تقسيم الشاشة إذا سمح Android والتطبيق."
-                + "\n3. تحليل توافق واقتراح إعدادات آمنة."
-                + "\n\nلا يمكن فرض جودة بث أعلى من المصدر، أو إنشاء جواهر، أو فتح فيديو مدفوع أو بث خاص دون صلاحية. كما أن هذا التحليل محلي تجريبي وليس نموذج ذكاء اصطناعي متصل بعد.";
-        new AlertDialog.Builder(this)
-                .setTitle("تحليل تجريبي للتطبيق")
-                .setMessage(report)
-                .setPositiveButton("حسناً", null)
-                .show();
-    }
+
 
     @Override
     protected void onDestroy() {
