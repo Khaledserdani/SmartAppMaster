@@ -1,6 +1,8 @@
 package com.smartappmaster;
 
 import android.app.Activity;
+import android.app.ActivityOptions;
+import android.app.AlertDialog;
 import android.app.ActivityManager;
 import android.app.NotificationManager;
 import android.content.ActivityNotFoundException;
@@ -12,7 +14,9 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
+import android.graphics.PixelFormat;
 import android.graphics.Typeface;
+import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.BatteryManager;
@@ -22,6 +26,7 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.content.res.ColorStateList;
 import android.widget.Button;
@@ -56,6 +61,8 @@ public class MainActivity extends Activity {
     private String selectedPackage = "";
     private String selectedLabelText = "";
     private final List<AppEntry> apps = new ArrayList<>();
+    private WindowManager floatingWindowManager;
+    private View floatingAssistantView;
 
     private static class AppEntry {
         final String label;
@@ -71,7 +78,9 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
-        getWindow().getDecorView().setSystemUiVisibility(0);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(true);
+        }
         prefs = getSharedPreferences("smart_app_master", MODE_PRIVATE);
         selectedPackage = prefs.getString("selected_package", "");
         selectedLabelText = prefs.getString("selected_label", "");
@@ -95,7 +104,8 @@ public class MainActivity extends Activity {
         scroll.setFillViewport(true);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18), dp(22), dp(18), dp(28));
+        root.setPadding(dp(18), dp(18), dp(18), dp(24));
+        root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         root.setBackgroundColor(BG);
         scroll.addView(root);
         setContentView(scroll);
@@ -148,6 +158,20 @@ public class MainActivity extends Activity {
         storage.setOnClickListener(v -> openSelectedStorage());
         actions.addView(storage);
         root.addView(actions);
+
+        addGap(root, 18);
+        addSection("إضافات تجريبية فوق التطبيقات");
+        TextView featureNote = text("هذه أدوات مستقلة تعمل فوق التطبيق المحدد ضمن حدود Android. لا تفتح محتوى مدفوعاً ولا تتجاوز خصوصية أو حماية أي تطبيق.", 12, MUTED, false);
+        addCard(featureNote);
+        Button floating = button("تشغيل المساعد العائم فوق التطبيقات");
+        floating.setOnClickListener(v -> showFloatingAssistant());
+        root.addView(floating);
+        Button split = secondaryButton("طلب فتح التطبيق في شاشة مقسومة");
+        split.setOnClickListener(v -> openSelectedSplitScreen());
+        root.addView(split);
+        Button analyze = secondaryButton("تحليل إمكانيات التطبيق واقتراح أدوات");
+        analyze.setOnClickListener(v -> analyzeSelectedApp());
+        root.addView(analyze);
 
         addGap(root, 18);
         addSection("قائمة التطبيقات");
@@ -374,9 +398,131 @@ public class MainActivity extends Activity {
             if (level >= 0 && scale > 0) batteryText = (level * 100 / scale) + "%";
             if (temp > 0) batteryText += String.format(Locale.US, " • حرارة البطارية %.1f°", temp / 10.0);
         }
-        deviceSummary.setText("الذاكرة المتاحة: " + availableMb + " MB من " + totalMb
-                + " MB\nالبطارية: " + batteryText
+        deviceSummary.setText("الذاكرة المتاحة: \u2066" + availableMb + " MB\u2069 من \u2066" + totalMb
+                + " MB\u2069\nالبطارية: " + batteryText
                 + "\nإصدار Android: " + Build.VERSION.RELEASE);
+    }
+
+    private void showFloatingAssistant() {
+        if (!hasSelection()) return;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            toast("المساعد العائم يحتاج Android 6 أو أحدث.");
+            return;
+        }
+        if (!Settings.canDrawOverlays(this)) {
+            toast("اسمح للمساعد بالظهور فوق التطبيقات، ثم ارجع إلى Smart App Master.");
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (Exception e) {
+                toast("تعذر فتح إعداد صلاحية الظهور فوق التطبيقات.");
+            }
+            return;
+        }
+        removeFloatingAssistant();
+        floatingWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(14), dp(12), dp(14), dp(12));
+        panel.setBackground(round(PANEL, 18));
+        TextView heading = text("المساعد العائم • " + selectedLabelText, 15, TEXT, true);
+        panel.addView(heading);
+        TextView detail = text("اختصارات سريعة أثناء استعمال التطبيق. هذه النسخة تجريبية ولا تقرأ المحادثات أو محتوى الشاشة.", 11, MUTED, false);
+        panel.addView(detail);
+        Button open = button("فتح " + selectedLabelText);
+        open.setOnClickListener(v -> launchSelected());
+        panel.addView(open);
+        Button inspect = secondaryButton("عرض تحليل التطبيق");
+        inspect.setOnClickListener(v -> analyzeSelectedApp());
+        panel.addView(inspect);
+        Button close = secondaryButton("إغلاق النافذة العائمة");
+        close.setOnClickListener(v -> removeFloatingAssistant());
+        panel.addView(close);
+
+        int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                dp(290), WindowManager.LayoutParams.WRAP_CONTENT, type,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.TOP | Gravity.END;
+        params.x = dp(12);
+        params.y = dp(110);
+        try {
+            floatingWindowManager.addView(panel, params);
+            floatingAssistantView = panel;
+            toast("المساعد العائم يعمل فوق التطبيقات.");
+        } catch (Exception e) {
+            floatingAssistantView = null;
+            toast("لم يتمكن Android من إظهار النافذة العائمة.");
+        }
+    }
+
+    private void removeFloatingAssistant() {
+        if (floatingWindowManager != null && floatingAssistantView != null) {
+            try { floatingWindowManager.removeView(floatingAssistantView); }
+            catch (Exception ignored) {}
+        }
+        floatingAssistantView = null;
+    }
+
+    private void openSelectedSplitScreen() {
+        if (!hasSelection()) return;
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            toast("تقسيم الشاشة يحتاج Android 7 أو أحدث.");
+            return;
+        }
+        Intent intent = getPackageManager().getLaunchIntentForPackage(selectedPackage);
+        if (intent == null) {
+            toast("هذا التطبيق لا يوفر اختصار تشغيل.");
+            return;
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+        try {
+            ActivityOptions options = ActivityOptions.makeBasic();
+            options.setLaunchBounds(new Rect(0, 0,
+                    getResources().getDisplayMetrics().widthPixels / 2,
+                    getResources().getDisplayMetrics().heightPixels));
+            startActivity(intent, options.toBundle());
+            toast("أرسلنا طلب تقسيم الشاشة؛ القرار النهائي يعود إلى Android والتطبيق.");
+        } catch (Exception e) {
+            try { startActivity(intent); }
+            catch (Exception ignored) { toast("تعذر تشغيل التطبيق المحدد."); }
+        }
+    }
+
+    private void analyzeSelectedApp() {
+        if (!hasSelection()) return;
+        String version = "غير معروف";
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                version = getPackageManager().getPackageInfo(selectedPackage,
+                        PackageManager.PackageInfoFlags.of(0)).versionName;
+            } else {
+                version = getPackageManager().getPackageInfo(selectedPackage, 0).versionName;
+            }
+        } catch (Exception ignored) {}
+        String report = "التطبيق: " + selectedLabelText
+                + "\nالحزمة: " + selectedPackage
+                + "\nالإصدار: " + version
+                + "\n\nالإضافات التي يمكن تجربتها من Smart App Master:"
+                + "\n1. مساعد عائم واختصارات فوق التطبيق."
+                + "\n2. طلب تقسيم الشاشة إذا سمح Android والتطبيق."
+                + "\n3. تحليل توافق واقتراح إعدادات آمنة."
+                + "\n\nلا يمكن فرض جودة بث أعلى من المصدر، أو إنشاء جواهر، أو فتح فيديو مدفوع أو بث خاص دون صلاحية. كما أن هذا التحليل محلي تجريبي وليس نموذج ذكاء اصطناعي متصل بعد.";
+        new AlertDialog.Builder(this)
+                .setTitle("تحليل تجريبي للتطبيق")
+                .setMessage(report)
+                .setPositiveButton("حسناً", null)
+                .show();
+    }
+
+    @Override
+    protected void onDestroy() {
+        removeFloatingAssistant();
+        super.onDestroy();
     }
 
     private void addSection(String value) {
