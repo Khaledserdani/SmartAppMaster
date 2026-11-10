@@ -11,11 +11,11 @@
 
     <application
         android:allowBackup="false"
-        android:label="Smart App Master"
+        android:label="VIP X"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:supportsRtl="true">
         <activity
-            android:name=".MainActivity"
+            android:name=".VipXActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="true">
             <intent-filter>
@@ -23,5 +23,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:exported="false" />
     </application>
 </manifest>
